@@ -68,6 +68,9 @@ type EtcdBackupStatus struct {
 }
 
 //+kubebuilder:object:root=true
+// +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase",description=""
+// +kubebuilder:printcolumn:name="StartTime",type="date",JSONPath=".status.startTime",description=""
+// +kubebuilder:printcolumn:name="CompletionTime",type="date",JSONPath=".status.completionTime",description=""
 //+kubebuilder:subresource:status
 
 // EtcdBackup is the Schema for the etcdbackups API

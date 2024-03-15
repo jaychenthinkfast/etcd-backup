@@ -19,10 +19,14 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/go-logr/logr"
 	"go.etcd.io/etcd/client/pkg/v3/transport"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/snapshot"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/record"
+	"os"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"strconv"
 	"time"
@@ -38,7 +42,9 @@ import (
 // EtcdBackupReconciler reconciles a EtcdBackup object
 type EtcdBackupReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
+	Log      logr.Logger
 }
 
 //+kubebuilder:rbac:groups=etcd.chenjie.info,resources=etcdbackups,verbs=get;list;watch;create;update;patch;delete
@@ -56,8 +62,8 @@ type EtcdBackupReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.15.0/pkg/reconcile
 func (r *EtcdBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	// TODO(user): your logic here
-	loglog := log.FromContext(ctx)
-	loglog.Info("Reconciling EtcdBackup", "NamespacedName", req.NamespacedName)
+	_ = log.FromContext(ctx)
+	loglog := r.Log.WithValues("etcdbackup", req.NamespacedName)
 	backup := &etcdv1alpha1.EtcdBackup{}
 	// Get backup and checkout is not found
 	if err := r.Get(ctx, req.NamespacedName, backup); err != nil {
@@ -87,6 +93,7 @@ func (r *EtcdBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		loglog.Info("Reconciling EtcdBackup", "update status error", err)
 		return ctrl.Result{}, fmt.Errorf("update status error: %s", err)
 	}
+	r.Recorder.Event(backup, corev1.EventTypeNormal, "BackupStart", "Backuping")
 
 	tlsInfo := transport.TLSInfo{
 		CertFile:      backup.Spec.Cert,
@@ -103,6 +110,11 @@ func (r *EtcdBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		DialTimeout: 5 * time.Second,
 		TLS:         tlsConfig,
 	}
+	err = os.MkdirAll(backup.Spec.BackupDir, 0755)
+	if err != nil {
+		loglog.Info("Reconciling EtcdBackup", "mkdir error", err)
+		return ctrl.Result{}, fmt.Errorf("mkdir error: %s", err)
+	}
 	backupPath := backup.Spec.BackupDir + "/" + strconv.Itoa(time.Now().Hour()) + strconv.Itoa(time.Now().Minute()) + "-snapshot.db"
 	err = snapshot.Save(ctx, zap.NewRaw(zap.UseDevMode(true)), cfg, backupPath)
 	if err != nil {
@@ -114,6 +126,7 @@ func (r *EtcdBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			loglog.Info("Reconciling EtcdBackup", "update status error", err)
 			return ctrl.Result{}, fmt.Errorf("update status error: %s", err)
 		}
+		r.Recorder.Event(backup, corev1.EventTypeWarning, "BackupFailed", "Backup failed. See backup pod logs for details.")
 		return ctrl.Result{}, fmt.Errorf("snapshot save error: %s", err)
 	}
 
@@ -125,6 +138,7 @@ func (r *EtcdBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		loglog.Info("Reconciling EtcdBackup", "update status error", err)
 		return ctrl.Result{}, fmt.Errorf("update status error: %s", err)
 	}
+	r.Recorder.Event(backup, corev1.EventTypeNormal, "BackupSucceeded", "Backup completed successfully")
 	return ctrl.Result{}, nil
 }
 

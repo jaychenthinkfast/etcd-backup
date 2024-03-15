@@ -90,8 +90,10 @@ func main() {
 	}
 
 	if err = (&controller.EtcdBackupReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("etcdbackup-controller"), // init Recorder
+		Log:      ctrl.Log.WithName("controllers").WithName("EtcdCluster"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "EtcdBackup")
 		os.Exit(1)

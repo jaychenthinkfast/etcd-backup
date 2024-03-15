@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/part-of: etcd-backup
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/created-by: etcd-backup
-  name: etcdbackup-sample
+  name: etcdbackup-sample2
 spec:
   etcdUrl: 127.0.0.1:2379
   caCert: /etc/ssl/etcd/ssl/ca.pem

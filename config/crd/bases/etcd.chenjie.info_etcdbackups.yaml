@@ -14,7 +14,17 @@ spec:
     singular: etcdbackup
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.startTime
+      name: StartTime
+      type: date
+    - jsonPath: .status.completionTime
+      name: CompletionTime
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: EtcdBackup is the Schema for the etcdbackups API

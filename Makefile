@@ -70,6 +70,10 @@ test: manifests generate fmt vet envtest ## Run tests.
 build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
 
+.PHONY: build
+buildlinux: manifests generate fmt vet ## Build manager binary.
+	GOOS=linux GOARCH=amd64 go build -o bin/managerlinux cmd/main.go
+
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./cmd/main.go

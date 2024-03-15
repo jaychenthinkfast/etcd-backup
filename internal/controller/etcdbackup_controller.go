@@ -18,6 +18,14 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"go.etcd.io/etcd/client/pkg/v3/transport"
+	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/client/v3/snapshot"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"strconv"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -47,10 +55,76 @@ type EtcdBackupReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.15.0/pkg/reconcile
 func (r *EtcdBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
-
 	// TODO(user): your logic here
+	loglog := log.FromContext(ctx)
+	loglog.Info("Reconciling EtcdBackup", "NamespacedName", req.NamespacedName)
+	backup := &etcdv1alpha1.EtcdBackup{}
+	// Get backup and checkout is not found
+	if err := r.Get(ctx, req.NamespacedName, backup); err != nil {
+		if client.IgnoreNotFound(err) != nil {
+			loglog.Info("Reconciling EtcdBackup", "getting backup error", err)
+			return ctrl.Result{}, fmt.Errorf("getting backup error: %s", err)
+		}
+		// Backup deleted
+		loglog.Info("Reconciling EtcdBackup", "not found. . ", "Ignoring")
+		return ctrl.Result{}, nil
+	}
+	// Check backup has been deleted
+	if !backup.DeletionTimestamp.IsZero() {
+		loglog.Info("Reconciling EtcdBackup", "has been deleted. . ", "Ignoring")
+		return ctrl.Result{}, nil
+	}
+	// Check status phase
+	if backup.Status.Phase != "" {
+		loglog.Info("Reconciling EtcdBackup", "status phase is not empty ", "Ignoring")
+		return ctrl.Result{}, nil
+	}
+	// update status
+	newBackup := backup.DeepCopy()
+	newBackup.Status.Phase = etcdv1alpha1.EtcdBackupPhaseBackingUp
+	newBackup.Status.StartTime = &metav1.Time{Time: time.Now()}
+	if err := r.Status().Patch(ctx, newBackup, client.MergeFrom(backup)); err != nil {
+		loglog.Info("Reconciling EtcdBackup", "update status error", err)
+		return ctrl.Result{}, fmt.Errorf("update status error: %s", err)
+	}
 
+	tlsInfo := transport.TLSInfo{
+		CertFile:      backup.Spec.Cert,
+		KeyFile:       backup.Spec.Key,
+		TrustedCAFile: backup.Spec.CaCert,
+	}
+	tlsConfig, err := tlsInfo.ClientConfig()
+	if err != nil {
+		loglog.Info("Reconciling EtcdBackup", "tls config error", err)
+		return ctrl.Result{}, fmt.Errorf("tls config error: %s", err)
+	}
+	cfg := clientv3.Config{
+		Endpoints:   []string{backup.Spec.EtcdUrl},
+		DialTimeout: 5 * time.Second,
+		TLS:         tlsConfig,
+	}
+	backupPath := backup.Spec.BackupDir + "/" + strconv.Itoa(time.Now().Hour()) + strconv.Itoa(time.Now().Minute()) + "-snapshot.db"
+	err = snapshot.Save(ctx, zap.NewRaw(zap.UseDevMode(true)), cfg, backupPath)
+	if err != nil {
+		loglog.Info("Reconciling EtcdBackup", "snapshot save error", err)
+		// update status
+		newBackup = backup.DeepCopy()
+		newBackup.Status.Phase = etcdv1alpha1.EtcdBackupPhaseFailed
+		if err := r.Status().Patch(ctx, newBackup, client.MergeFrom(backup)); err != nil {
+			loglog.Info("Reconciling EtcdBackup", "update status error", err)
+			return ctrl.Result{}, fmt.Errorf("update status error: %s", err)
+		}
+		return ctrl.Result{}, fmt.Errorf("snapshot save error: %s", err)
+	}
+
+	// update status
+	newBackup = backup.DeepCopy()
+	newBackup.Status.Phase = etcdv1alpha1.EtcdBackupPhaseCompleted
+	newBackup.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+	if err := r.Status().Patch(ctx, newBackup, client.MergeFrom(backup)); err != nil {
+		loglog.Info("Reconciling EtcdBackup", "update status error", err)
+		return ctrl.Result{}, fmt.Errorf("update status error: %s", err)
+	}
 	return ctrl.Result{}, nil
 }
 

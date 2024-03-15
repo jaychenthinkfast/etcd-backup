@@ -27,15 +27,44 @@ import (
 type EtcdBackupSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	/*
+			ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379
+		   --cacert=/etc/ssl/etcd/ssl/ca.pem --cert=/etc/ssl/etcd/ssl/member-node1.pem
+		   --key=/etc/ssl/etcd/ssl/member-node1-key.pem  snapshot save /data/etcd_backup_dir/etcd-snapshot.db
+	*/
+	// Specific Backup Etcd Endpoints.
+	EtcdUrl string `json:"etcdUrl"`
 
-	// Foo is an example field of EtcdBackup. Edit etcdbackup_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// Certificate.
+	CaCert string `json:"caCert"`
+	Cert   string `json:"cert"`
+	Key    string `json:"key"`
+
+	// Backup Directory.
+	BackupDir string `json:"backupDir"`
 }
+
+type EtcdBackupPhase string
+
+var (
+	EtcdBackupPhaseBackingUp EtcdBackupPhase = "BackingUp"
+	EtcdBackupPhaseCompleted EtcdBackupPhase = "Completed"
+	EtcdBackupPhaseFailed    EtcdBackupPhase = "Failed"
+)
 
 // EtcdBackupStatus defines the observed state of EtcdBackup
 type EtcdBackupStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+
+	// Phase defines the current operation that the backup process is taking.
+	Phase EtcdBackupPhase `json:"phase,omitempty"`
+	// StartTime is the times that this backup entered the `BackingUp' phase.
+	// +optional
+	StartTime *metav1.Time `json:"startTime,omitempty"`
+	// CompletionTime is the time that this backup entered the `Completed' phase.
+	// +optional
+	CompletionTime *metav1.Time `json:"completionTime,omitempty"`
 }
 
 //+kubebuilder:object:root=true

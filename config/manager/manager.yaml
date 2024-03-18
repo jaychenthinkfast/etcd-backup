@@ -36,6 +36,8 @@ spec:
       labels:
         control-plane: controller-manager
     spec:
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: ""
       # TODO(user): Uncomment the following code to configure the nodeAffinity expression
       # according to the platforms which are supported by your solution.
       # It is considered best practice to support multiple architectures. You can
@@ -57,7 +59,8 @@ spec:
       #             values:
       #               - linux
       securityContext:
-        runAsNonRoot: true
+        runAsUser: 0
+        runAsGroup: 0
         # TODO(user): For common cases that do not require escalating privileges
         # it is recommended to ensure that all your Pods/Containers are restrictive.
         # More info: https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted
@@ -98,5 +101,19 @@ spec:
           requests:
             cpu: 10m
             memory: 64Mi
+        # add volumeMounts
+        volumeMounts:
+          - mountPath: /etc/ssl/etcd/ssl
+            name: etcd-ssl-volume
+          - mountPath: /data
+            name: host-data-volume
+      # add volumes
+      volumes:
+        - name: etcd-ssl-volume
+          hostPath:
+            path: /etc/ssl/etcd/ssl
+        - name: host-data-volume
+          hostPath:
+            path: /data
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10
